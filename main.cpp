@@ -42,6 +42,7 @@ const int kMaxSize = 99;
 const int kDefaultSize = 11;
 
 void init();
+void newPuzzle();
 void generateMap();
 void setColor(int color);
 void setBackColor(int color);
@@ -90,6 +91,7 @@ int main(int argc, char *argv[])
 			cout << "Rotate clockwise:\t. or Space" << endl;
 			cout << "Rotate anticlockwise:\t," << endl;
 			cout << "Lock tile:\t\tl or s" << endl;
+			cout << "New puzzle:\t\tn" << endl;
 			cout << "Quit:\t\t\tq" << endl;
 			return 1;
 		}
@@ -139,6 +141,10 @@ int main(int argc, char *argv[])
 				drawMap();
 			}
 		}
+		else if(ch == 'n')
+		{
+			newPuzzle();
+		}
 		else if(ch == 'l' || ch == 's')
 		{
 			maze.at(currentX).at(currentY).locked = !maze.at(currentX).at(currentY).locked;
@@ -168,7 +174,7 @@ int termCols = 80;
 int offRow = 0;
 int offCol = 0;
 
-const char *kHelp = "arrows move  space or . turn  , turn back  l lock  q quit";
+const char *kHelp = "arrows move  space or . turn  , turn back  l lock  n new  q quit";
 
 volatile sig_atomic_t resized = 0;
 volatile sig_atomic_t quitRequested = 0;
@@ -312,12 +318,15 @@ void init()
 	tiles[0x0E] = "╦";
 	tiles[0x0F] = "╬";
 
-	for(int i=0; i<sizeX; ++i)
-	{
-		maze.push_back(vector<tile>(sizeY));
-	}
-
 	srand(time(NULL));
+
+	newPuzzle();
+}
+
+//generates a new puzzle and shows it
+void newPuzzle()
+{
+	maze.assign(sizeX, vector<tile>(sizeY));
 
 	generateMap();
 	//randomly rotate every tile:
