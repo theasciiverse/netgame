@@ -33,6 +33,10 @@ map<int,string> tiles;
 
 bool wrapping = false;
 
+const int kMinSize = 2;
+const int kMaxSize = 99;
+const int kDefaultSize = 11;
+
 void init();
 void generateMap();
 void setColor(int color);
@@ -51,22 +55,35 @@ template<class T> T fromString(const string& s);
 int main(int argc, char *argv[])
 {
 	vector<string> args(argv, argv + argc);
-	if(args.size() < 3)
+	vector<int> sizes;
+	for(size_t i=1; i<args.size(); ++i)
 	{
-		cout << "usage: " + string(args.at(0)) + " x-size y-size [--wrapping]" << endl;
-		cout << "Move cursor:\t\tArrow keys" << endl;
-		cout << "Rotate clockwise:\t. or Space" << endl;
-		cout << "Rotate anticlockwise:\t," << endl;
-		cout << "Lock tile:\t\tl or s" << endl;
-		cout << "Quit:\t\t\tq" << endl;
-		return 1;
+		if(args.at(i) == "--wrapping")
+		{
+			wrapping = true;
+		}
+		else if(!args.at(i).empty() && args.at(i).find_first_not_of("0123456789") == string::npos && sizes.size() < 2)
+		{
+			sizes.push_back(fromString<int>(args.at(i)));
+		}
+		else
+		{
+			cout << "usage: " + string(args.at(0)) + " [x-size y-size] [--wrapping]" << endl;
+			cout << "Sizes from " << kMinSize << " to " << kMaxSize << " (default " << kDefaultSize << " by " << kDefaultSize << ")" << endl;
+			cout << "Move cursor:\t\tArrow keys" << endl;
+			cout << "Rotate clockwise:\t. or Space" << endl;
+			cout << "Rotate anticlockwise:\t," << endl;
+			cout << "Lock tile:\t\tl or s" << endl;
+			cout << "Quit:\t\t\tq" << endl;
+			return 1;
+		}
 	}
-	sizeX = fromString<int>(args.at(1));
-	sizeY = fromString<int>(args.at(2));
-	if(find(args.begin(), args.end(), "--wrapping")!=args.end())
-	{
-		wrapping = true;
-	}
+	//without sizes the default board; a single size makes a square one
+	sizeX = sizes.size() > 0 ? sizes.at(0) : kDefaultSize;
+	sizeY = sizes.size() > 1 ? sizes.at(1) : sizeX;
+	//a 1 by 1 board never finished generating, and 0 crashed
+	sizeX = max(kMinSize, min(kMaxSize, sizeX));
+	sizeY = max(kMinSize, min(kMaxSize, sizeY));
 
 	centreX = sizeX/2;
 	centreY = sizeY/2;
@@ -125,7 +142,7 @@ int main(int argc, char *argv[])
 					{
 						//cout << "Up";
 						int oldX = currentX;
-						currentX = (--currentX%sizeX + sizeX)%sizeX;
+						currentX = wrapX(currentX - 1);
 						drawTile(oldX, currentY);
 						drawTile(currentX, currentY);
 						cout << "\033[u";
@@ -134,7 +151,7 @@ int main(int argc, char *argv[])
 					{
 						//cout << "Down";
 						int oldX = currentX;
-						currentX = (++currentX%sizeX + sizeX)%sizeX;
+						currentX = wrapX(currentX + 1);
 						drawTile(oldX, currentY);
 						drawTile(currentX, currentY);
 						cout << "\033[u";
@@ -143,7 +160,7 @@ int main(int argc, char *argv[])
 					{
 						//cout << "Right";
 						int oldY = currentY;
-						currentY = (++currentY%sizeY + sizeY)%sizeY;
+						currentY = wrapY(currentY + 1);
 						drawTile(currentX, oldY);
 						drawTile(currentX, currentY);
 						cout << "\033[u";
@@ -152,7 +169,7 @@ int main(int argc, char *argv[])
 					{
 						//cout << "Left";
 						int oldY = currentY;
-						currentY = (--currentY%sizeY + sizeY)%sizeY;
+						currentY = wrapY(currentY - 1);
 						drawTile(currentX, oldY);
 						drawTile(currentX, currentY);
 						cout << "\033[u";
@@ -279,7 +296,7 @@ void generateMap()
 							if(connected & 0x01)
 							{
 								maze.at(currentX).at(currentY).type |= 0x01;
-								currentX = wrapX(--currentX);
+								currentX = wrapX(currentX - 1);
 								maze.at(currentX).at(currentY).type |= 0x04;
 								chosen = true;
 							}
@@ -288,7 +305,7 @@ void generateMap()
 							if(connected & 0x02)
 							{
 								maze.at(currentX).at(currentY).type |= 0x02;
-								currentY = wrapY(++currentY);
+								currentY = wrapY(currentY + 1);
 								maze.at(currentX).at(currentY).type |= 0x08;
 								chosen = true;
 							}
@@ -297,7 +314,7 @@ void generateMap()
 							if(connected & 0x04)
 							{
 								maze.at(currentX).at(currentY).type |= 0x04;
-								currentX = wrapX(++currentX);
+								currentX = wrapX(currentX + 1);
 								maze.at(currentX).at(currentY).type |= 0x01;
 								chosen = true;
 							}
@@ -306,7 +323,7 @@ void generateMap()
 							if(connected & 0x08)
 							{
 								maze.at(currentX).at(currentY).type |= 0x08;
-								currentY = wrapY(--currentY);
+								currentY = wrapY(currentY - 1);
 								maze.at(currentX).at(currentY).type |= 0x02;
 								chosen = true;
 							}
@@ -334,7 +351,7 @@ void generateMap()
 							{
 								maze.at(currentX).at(currentY).locked = true;
 								maze.at(currentX).at(currentY).type |= 1;
-								currentX = wrapX(--currentX);
+								currentX = wrapX(currentX - 1);
 								maze.at(currentX).at(currentY).type |= 4;
 								chosen = true;
 							}
@@ -344,7 +361,7 @@ void generateMap()
 							{
 								maze.at(currentX).at(currentY).locked = true;
 								maze.at(currentX).at(currentY).type |= 2;
-								currentY = wrapY(++currentY);
+								currentY = wrapY(currentY + 1);
 								maze.at(currentX).at(currentY).type |= 8;
 								chosen = true;
 							}
@@ -354,7 +371,7 @@ void generateMap()
 							{
 								maze.at(currentX).at(currentY).locked = true;
 								maze.at(currentX).at(currentY).type |= 4;
-								currentX = wrapX(++currentX);
+								currentX = wrapX(currentX + 1);
 								maze.at(currentX).at(currentY).type |= 1;
 								chosen = true;
 							}
@@ -364,7 +381,7 @@ void generateMap()
 							{
 								maze.at(currentX).at(currentY).locked = true;
 								maze.at(currentX).at(currentY).type |= 8;
-								currentY = wrapY(--currentY);
+								currentY = wrapY(currentY - 1);
 								maze.at(currentX).at(currentY).type |= 2;
 								chosen = true;
 							}
