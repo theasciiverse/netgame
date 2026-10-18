@@ -7,12 +7,17 @@
 #include <string>
 #include <sstream>
 #include <algorithm>
-#include <termios.h>
-#include <unistd.h>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
+#ifdef _WIN32
+#include <windows.h>
+#include <conio.h>
+#else
+#include <termios.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
+#endif
 using namespace std;
 
 struct tile
@@ -179,6 +184,97 @@ const char *kHelp = "arrows move  space or . turn  , turn back  l lock  n new  q
 volatile sig_atomic_t resized = 0;
 volatile sig_atomic_t quitRequested = 0;
 
+#ifdef _WIN32
+//Windows: keys from _getch(), drawing through the console's virtual
+//terminal mode (Windows 10 and later), a resize noticed while polling
+
+DWORD outModeBefore;
+UINT outCpBefore;
+
+BOOL WINAPI onConsoleCtrl(DWORD)
+{
+	quitRequested = 1;
+	return TRUE;
+}
+
+void consoleSize(int& rows, int& cols)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	if(GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info))
+	{
+		rows = info.srWindow.Bottom - info.srWindow.Top + 1;
+		cols = info.srWindow.Right - info.srWindow.Left + 1;
+	}
+}
+
+void terminalSetup()
+{
+	HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+	GetConsoleMode(out, &outModeBefore);
+	SetConsoleMode(out, outModeBefore | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	outCpBefore = GetConsoleOutputCP();
+	SetConsoleOutputCP(CP_UTF8);
+	SetConsoleCtrlHandler(onConsoleCtrl, TRUE);
+
+	//alternate screen, cursor hidden
+	cout << "\033[?1049h\033[?25l";
+	measure();
+}
+
+void terminalRestore()
+{
+	cout << "\033[0m\033[?25h\033[?1049l" << flush;
+	SetConsoleOutputCP(outCpBefore);
+	SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), outModeBefore);
+}
+
+int readKey()
+{
+	while(1)
+	{
+		if(quitRequested)
+		{
+			return 'q';
+		}
+		int rows = termRows, cols = termCols;
+		consoleSize(rows, cols);
+		if(rows != termRows || cols != termCols)
+		{
+			return kResize;
+		}
+		if(!_kbhit())
+		{
+			Sleep(20);
+			continue;
+		}
+		int c = _getch();
+		if(c == 3)
+		{
+			return 'q';
+		}
+		if(c == 0 || c == 224)
+		{
+			switch(_getch())
+			{
+				case 72: return kUp;
+				case 80: return kDown;
+				case 77: return kRight;
+				case 75: return kLeft;
+			}
+			continue;
+		}
+		return c;
+	}
+}
+
+void measure()
+{
+	consoleSize(termRows, termCols);
+	offRow = max(0, (termRows - (sizeX + 3)) / 2);
+	offCol = max(0, (termCols - 2 * sizeY) / 2);
+}
+
+#else
 termios before;
 
 void onResize(int)
@@ -279,6 +375,8 @@ void measure()
 	offRow = max(0, (termRows - (sizeX + 3)) / 2);
 	offCol = max(0, (termCols - 2 * sizeY) / 2);
 }
+
+#endif
 
 //true if the board and its count line fit in the terminal
 bool fits()
