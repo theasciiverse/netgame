@@ -171,12 +171,19 @@ int offCol = 0;
 const char *kHelp = "arrows move  space or . turn  , turn back  l lock  q quit";
 
 volatile sig_atomic_t resized = 0;
+volatile sig_atomic_t quitRequested = 0;
 
 termios before;
 
 void onResize(int)
 {
 	resized = 1;
+}
+
+//Ctrl+C, SIGTERM and SIGHUP quit like q, so the terminal is put back
+void onQuit(int)
+{
+	quitRequested = 1;
 }
 
 void terminalSetup()
@@ -194,6 +201,10 @@ void terminalSetup()
 	sa.sa_handler = onResize;
 	sigemptyset(&sa.sa_mask);
 	sigaction(SIGWINCH, &sa, NULL);
+	sa.sa_handler = onQuit;
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGHUP, &sa, NULL);
 
 	//alternate screen, cursor hidden
 	cout << "\033[?1049h\033[?25l";
@@ -212,6 +223,10 @@ int readKey()
 {
 	while(1)
 	{
+		if(quitRequested)
+		{
+			return 'q';
+		}
 		if(resized)
 		{
 			resized = 0;
