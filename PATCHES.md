@@ -45,9 +45,9 @@ MIT, "Copyright (c) 2020 Ben Falconer" (LICENSE, added by the author in
   aarch64), macOS (x86_64, arm64) and Windows x86_64 (MinGW), plus
   SHA256SUMS, on our tags (`*-av.*`).
 - `.gitignore`: the build folders.
-
-Not done yet: the catalog preview (`asciiverse/netgame.cast`) and the hub
-manifest.
+- `asciiverse/netgame.cast`: the catalog preview, 100x30, 30 s, recorded
+  by `asciiverse/record-preview.sh` with hub's `castrec.py` and a fixed
+  key script (tiles turned, one locked, a new puzzle with n, then q).
 
 ## Tested
 
