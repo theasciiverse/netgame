@@ -8,7 +8,11 @@
 #include <sstream>
 #include <algorithm>
 #include <termios.h>
-#include <unistd.h> 
+#include <unistd.h>
+#include <cerrno>
+#include <csignal>
+#include <cstring>
+#include <sys/ioctl.h>
 using namespace std;
 
 struct tile
@@ -50,6 +54,18 @@ void clearConnected();
 void setConnected(int X, int Y);
 void drawMap();
 void drawTile(int X,int Y);
+void terminalSetup();
+void terminalRestore();
+int readKey();
+void measure();
+bool fits();
+
+//readKey() results beyond plain characters
+const int kUp = 256;
+const int kDown = 257;
+const int kRight = 258;
+const int kLeft = 259;
+const int kResize = 260;
 template<class T> T fromString(const string& s);
 
 int main(int argc, char *argv[])
@@ -88,108 +104,173 @@ int main(int argc, char *argv[])
 	centreX = sizeX/2;
 	centreY = sizeY/2;
 
-	termios before, after;
+	terminalSetup();
+
+	init();
+
+	//main control loop
+	while(1)
+	{
+		int ch = readKey();
+		if(ch == 'q')
+		{
+			terminalRestore();
+			return 0;
+		}
+		else if(ch == kResize)
+		{
+			measure();
+			cout << "\033[2J";
+			drawMap();
+		}
+		else if(ch == ' ' || ch == '.')
+		{
+			if(!maze.at(currentX).at(currentY).locked)
+			{
+				rotateClockwise(1);
+				drawMap();
+			}
+		}
+		else if(ch == ',')
+		{
+			if(!maze.at(currentX).at(currentY).locked)
+			{
+				rotateClockwise(3);
+				drawMap();
+			}
+		}
+		else if(ch == 'l' || ch == 's')
+		{
+			maze.at(currentX).at(currentY).locked = !maze.at(currentX).at(currentY).locked;
+			drawMap();
+		}
+		else if(ch == kUp || ch == kDown || ch == kLeft || ch == kRight)
+		{
+			int oldX = currentX;
+			int oldY = currentY;
+			if(ch == kUp) currentX = wrapX(currentX - 1);
+			if(ch == kDown) currentX = wrapX(currentX + 1);
+			if(ch == kRight) currentY = wrapY(currentY + 1);
+			if(ch == kLeft) currentY = wrapY(currentY - 1);
+			if(fits())
+			{
+				drawTile(oldX, oldY);
+				drawTile(currentX, currentY);
+				cout << flush;
+			}
+		}
+	}
+}
+
+//size of the terminal, and where the board starts in it
+int termRows = 24;
+int termCols = 80;
+int offRow = 0;
+int offCol = 0;
+
+const char *kHelp = "arrows move  space or . turn  , turn back  l lock  q quit";
+
+volatile sig_atomic_t resized = 0;
+
+termios before;
+
+void onResize(int)
+{
+	resized = 1;
+}
+
+void terminalSetup()
+{
+	termios after;
 	tcgetattr (STDIN_FILENO, &before); // fill 'before' with current termios values
 	after = before; // make a copy to be modified
 	after.c_lflag &= (~ICANON); // Disable canonical mode, including line buffering
 	after.c_lflag &= (~ECHO); // Don't echo characters on the screen (optional)
 	tcsetattr (STDIN_FILENO, TCSANOW, &after); // Set the modified flags
 
-	init();
+	//no SA_RESTART: a resize interrupts the read() that waits for a key
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = onResize;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGWINCH, &sa, NULL);
 
-	//main control loop
-	char ch;
+	//alternate screen, cursor hidden
+	cout << "\033[?1049h\033[?25l";
+	measure();
+}
+
+void terminalRestore()
+{
+	cout << "\033[0m\033[?25h\033[?1049l" << flush;
+	tcsetattr (STDIN_FILENO, TCSANOW, &before);
+}
+
+//reads a key: arrows (ESC [ or ESC O and a letter) come back as kUp and so
+//on, a resize as kResize
+int readKey()
+{
 	while(1)
 	{
-		//check which key has been pressed.  cin.get() blocks.
-		if(ch=cin.get())
+		if(resized)
 		{
-			if(ch == 'q')
-			{
-				tcsetattr (STDIN_FILENO, TCSANOW, &before);
-				return 0;
-			}
-			else if(ch == ' ' || ch == '.')
-			{
-				if(!maze.at(currentX).at(currentY).locked)
-				{
-					rotateClockwise(1);
-					drawMap();
-				}
-			}
-			else if(ch == ',')
-			{
-				if(!maze.at(currentX).at(currentY).locked)
-				{
-					rotateClockwise(3);
-					drawMap();
-				}
-			}
-			else if(ch == 'l' || ch == 's')
-			{
-				maze.at(currentX).at(currentY).locked = !maze.at(currentX).at(currentY).locked;
-				drawMap();
-			}
-			//if there's a special character (a non ASCII value) then it comes through as ESC (27) and then another series of characters
-			else if(ch == 27)
-			{
-				ch=cin.get();
-				if(ch == '[')
-				{
-					//we have a special character
-					ch=cin.get();
-					if(ch == 'A')
-					{
-						//cout << "Up";
-						int oldX = currentX;
-						currentX = wrapX(currentX - 1);
-						drawTile(oldX, currentY);
-						drawTile(currentX, currentY);
-						cout << "\033[u";
-					}
-					else if(ch == 'B')
-					{
-						//cout << "Down";
-						int oldX = currentX;
-						currentX = wrapX(currentX + 1);
-						drawTile(oldX, currentY);
-						drawTile(currentX, currentY);
-						cout << "\033[u";
-					}
-					else if(ch == 'C')
-					{
-						//cout << "Right";
-						int oldY = currentY;
-						currentY = wrapY(currentY + 1);
-						drawTile(currentX, oldY);
-						drawTile(currentX, currentY);
-						cout << "\033[u";
-					}
-					else if(ch == 'D')
-					{
-						//cout << "Left";
-						int oldY = currentY;
-						currentY = wrapY(currentY - 1);
-						drawTile(currentX, oldY);
-						drawTile(currentX, currentY);
-						cout << "\033[u";
-					}
-					else
-					{
-					}
-				}
-				else
-				{
-					//cout << "ESC" << ch;
-				}
-			}
-			else
-			{
-				//cout << ch;
-			}
+			resized = 0;
+			return kResize;
 		}
-		
+		unsigned char c;
+		ssize_t n = read(STDIN_FILENO, &c, 1);
+		if(n == 0)
+		{
+			return 'q';
+		}
+		if(n < 0)
+		{
+			if(errno == EINTR) continue;
+			return 'q';
+		}
+		if(c != 27)
+		{
+			return c;
+		}
+		unsigned char seq[2];
+		if(read(STDIN_FILENO, &seq[0], 1) != 1 || (seq[0] != '[' && seq[0] != 'O')) continue;
+		if(read(STDIN_FILENO, &seq[1], 1) != 1) continue;
+		switch(seq[1])
+		{
+			case 'A': return kUp;
+			case 'B': return kDown;
+			case 'C': return kRight;
+			case 'D': return kLeft;
+		}
 	}
+}
+
+//reads the terminal size and centres the board (two columns per tile) with
+//its two lines below
+void measure()
+{
+	struct winsize ws;
+	if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0 && ws.ws_col > 0)
+	{
+		termRows = ws.ws_row;
+		termCols = ws.ws_col;
+	}
+	offRow = max(0, (termRows - (sizeX + 3)) / 2);
+	offCol = max(0, (termCols - 2 * sizeY) / 2);
+}
+
+//true if the board and its count line fit in the terminal
+bool fits()
+{
+	return termRows >= sizeX + 2 && termCols >= 2 * sizeY;
+}
+
+//prints a line centred under the board, cut to the terminal width
+void centredLine(int row, const string& text)
+{
+	string line = text.substr(0, termCols);
+	cout << "\033[" << row + 1 << ";1H\033[K";
+	cout << "\033[" << row + 1 << ";" << (termCols - (int)line.size()) / 2 + 1 << "H" << line;
 }
 
 void init()
@@ -237,8 +318,6 @@ void init()
 	//clear screen
 	cout << "\033[2J";
 	drawMap();
-	//save cursor position
-	cout << "\033[s";
 }
 
 void generateMap()
@@ -427,7 +506,7 @@ void setBackColor(int color)
 
 void setCursor(int X, int Y)
 {
-	cout << "\033[" << X+1 << ";" << Y+1 << "f";
+	cout << "\033[" << offRow+X+1 << ";" << offCol+2*Y+1 << "H";
 }
 
 void rotateClockwise(int n)
@@ -527,7 +606,11 @@ void drawMap()
 {
 	clearConnected();
 	setConnected(centreX, centreY);
-	//clear screen:
+	if(!fits())
+	{
+		cout << "\033[0m\033[2J\033[1;1HTerminal too small for this board (q quits)" << flush;
+		return;
+	}
 	int connected = 0;
 	for(int i=0; i<maze.size(); ++i)
 	{
@@ -539,22 +622,20 @@ void drawMap()
 				++connected;
 			}
 		}
-		cout << endl;
 	}
-	//clear line
-	cout << "\033[K";
-	//show number connected
-	cout << connected << "/" << sizeX*sizeY << endl;
-	//if all pieces are connected then say congrats, otherwise clear the line.
+	//show number connected, and congrats when all pieces are connected
+	ostringstream count;
+	count << connected << "/" << sizeX*sizeY;
 	if(connected == sizeX*sizeY)
 	{
-		cout << "Congratulations!";
+		count << "  Congratulations!";
 	}
-	else
+	centredLine(offRow + sizeX + 1, count.str());
+	if(termRows >= sizeX + 3)
 	{
-		cout << "\033[K";
+		centredLine(offRow + sizeX + 2, kHelp);
 	}
-	cout << endl;
+	cout << flush;
 }
 
 void drawTile(int X,int Y)
@@ -581,6 +662,8 @@ void drawTile(int X,int Y)
 		setBackColor(1);
 	}
 	cout << tiles[maze.at(X).at(Y).type];
+	//each tile is two columns wide: the second continues a right arm
+	cout << ((maze.at(X).at(Y).type & 0x02) ? "═" : " ");
 	setColor(-1);
 }
 
