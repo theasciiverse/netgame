@@ -61,3 +61,9 @@ unchecked under ASan. Windows: cross-built with MinGW-w64 and run under
 Wine: keys, rotation, n and q work (three redraws seen, exit status 0),
 but Wine's console prints the escape codes literally, so the drawing on
 a real Windows console is unchecked. macOS: not built here.
+
+## Ours
+
+- **How to play it, at the top of README.** A short note on installing and
+  starting it with av, or from a release archive; the original text follows
+  unchanged.

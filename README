@@ -1,3 +1,18 @@
+Play it with Asciiverse
+=======================
+
+With av, the Asciiverse client (https://asciiverse.sh):
+
+    av install netgame
+    av play netgame
+
+Or download the archive for your system from this repository's Releases,
+unpack it and run ./netgame (netgame.exe on Windows).
+
+The original README follows.
+
+------------------------------------------------------------------------
+
 Compile with: g++ -o netgame main.cpp
 Should work on most ANSI terminals if their fonts have standard box drawing characters.
 Compiles and runs under Cygwin; if you're using "Cygwin Bash Shell" then change the font to Consolas or Lucidia Console as the default font displays the terminals and the T junctions the same, making the game rather harder.
